@@ -39,7 +39,7 @@ local Observer = {} :: ObserverFactory
 Observer.__index = Observer
 
 -- Callback maps remain private so callers cannot mutate dispatch order or state.
-local StateByObserver: { [Observer]: ObserverState } = {}
+local StateByObserver = (setmetatable({}, { __mode = "k" }) :: unknown) :: { [Observer]: ObserverState }
 
 local GetState = function(self: Observer): ObserverState
 	local State = StateByObserver[self]
