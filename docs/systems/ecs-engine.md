@@ -34,5 +34,5 @@ benchmark harness spec pass. Selene, StyLua, and Rojo build gates pass. The
 comparison harness completes all six VZNCore/jecs 0.5.3 workloads and preserves
 raw samples, median, and p95. Full-source `luau-lsp` analysis remains a known
 dual-environment tooling limitation, so the project makes no `luau-lsp`-clean or
-type-safety superiority claim. The publishable `main` history is one sanitized
-root commit with no internal planning or proprietary framework paths.
+type-safety superiority claim. The publishable `main` branch has sanitized
+history with no internal planning or proprietary framework paths.
