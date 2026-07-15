@@ -173,12 +173,7 @@ local function _shallowMerge(base: { [string]: any }, overrides: { [string]: any
 	return merged
 end
 
-local function _register<T>(
-	name: string,
-	defaults: T,
-	options: ComponentOptions?,
-	isTag: boolean
-): Component<T>
+local function _register<T>(name: string, defaults: T, options: ComponentOptions?, isTag: boolean): Component<T>
 	assert(not _definitions[name], `[Component] Component already defined: {name}`)
 
 	local resolvedOptions = options or {}
