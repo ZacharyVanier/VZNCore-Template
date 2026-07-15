@@ -6,6 +6,7 @@ local process = require(`@lune/process`)
 
 local World = require("../../src/Engine/World")
 local Component = require("../../src/Engine/Component")
+local Observer = require("../../src/Engine/Observer")
 
 local _passed: number = 0
 local _failed: number = 0
@@ -30,6 +31,15 @@ end
 print("")
 print("Running Observer tests...")
 print("")
+
+test(`observer representation is private and its public contract is methods-only`, function()
+	local observer = Observer.new()
+
+	assert(rawget(observer, "onAdd") == nil, `onAdd callback storage must remain private`)
+	assert(rawget(observer, "onChange") == nil, `onChange callback storage must remain private`)
+	assert(rawget(observer, "_empty") == nil, `listener state must remain private`)
+	assert(type(observer.register) == "function", `observer should expose behavior through methods`)
+end)
 
 test(`onAdd fires when addComponent is called`, function()
 	setup()

@@ -1,8 +1,10 @@
--- Entity storage: sparse-set entity index over archetype-backed component columns.
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	Entity -- owns entity records, archetypes, queries, and storage mutation.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
 
---##========== DEPENDENCIES ==========##--
+--» DEPENDENCIES & VARIABLES «--
 
 local function tryRequire(robloxPath: any, relativePath: any): any
 	local ok, result = pcall(function()
@@ -24,7 +26,7 @@ local _traverseRemove = Archetype.traverseRemove
 local _moveEntity = Archetype.moveEntity
 local _newEntity = Component.newEntity
 
---##========== TYPES ==========##--
+--» TYPE DEFINITIONS «--
 
 type Entity = number
 type ComponentMetadata = ECSTypes.ComponentMetadata
@@ -55,7 +57,7 @@ type DirtyEntry = {
 	name: string,
 }
 
---##========== ENTITY ID PACKING ==========##--
+--» ENTITY ID PACKING «--
 
 local ENTITY_MASK = bit32.lshift(1, 24)
 local GENERATION_MASK = bit32.lshift(1, 16)
@@ -76,7 +78,7 @@ local function _incrementGeneration(packed: Entity): Entity
 	return packed + ENTITY_MASK
 end
 
---##========== COMPONENT KEY RESOLUTION ==========##--
+--» COMPONENT KEY RESOLUTION «--
 
 -- Collapses a string name to its interned id; numbers (plain ids and pairs)
 -- pass through. The World boundary already resolves handles, so only these two
@@ -89,7 +91,7 @@ local function _keyOf(component: ComponentKey): number
 	return component :: number
 end
 
---##========== ENTITY INDEX ==========##--
+--» ENTITY INDEX «--
 
 local function _indexTryGet(index: EntityIndex, entity: Entity): Record?
 	local record = index.sparseArray[(entity % ENTITY_MASK)]
@@ -157,7 +159,7 @@ local function _indexRemove(index: EntityIndex, entity: Entity): ()
 	index.aliveCount = lastDense - 1
 end
 
---##========== PRIVATE HELPERS ==========##--
+--» PRIVATE HELPERS «--
 
 local function _flatten(archetypes: { any }): { Entity }
 	local result: { Entity } = {}
@@ -371,7 +373,7 @@ local function _prunePairIndex(index: { [number]: { [number]: boolean } }, liveP
 	end
 end
 
---##========== QUERY ARCHETYPE RESOLUTION ==========##--
+--» QUERY ARCHETYPE RESOLUTION «--
 
 local EMPTY_ENTITIES: { Entity } = {}
 local EMPTY_COLUMN: { any } = {}
@@ -720,7 +722,7 @@ local function _streamN(archetypes: { any }, ids: { number }): () -> ...any
 	end
 end
 
---##========== COMPILED QUERY PLANS ==========##--
+--» COMPILED QUERY PLANS «--
 
 local EMPTY_COLUMNS: { { any } } = {}
 
@@ -1017,26 +1019,26 @@ end
 local CompiledCursor = {}
 CompiledCursor.__index = CompiledCursor
 
-function CompiledCursor.__call(self: any): ...any
+CompiledCursor.__call = function(self: any): ...any
 	return _iterateCompiledState(self._state)
 end
 
-function CompiledCursor.__iter(self: any): (any, any, nil)
+CompiledCursor.__iter = function(self: any): (any, any, nil)
 	return _iterateCompiledState, self._state, nil
 end
 
-function CompiledCursor.close(self: any): ()
+CompiledCursor.close = function(self: any): ()
 	_closeCompiledState(self._state)
 end
 
 local CompiledQuery = {}
 CompiledQuery.__index = CompiledQuery
 
-function CompiledQuery.__call(self: any): ...any
+CompiledQuery.__call = function(self: any): ...any
 	return _iterateCompiledState(self._defaultState)
 end
 
-function CompiledQuery.__iter(self: any): (any, any, nil)
+CompiledQuery.__iter = function(self: any): (any, any, nil)
 	local state = self._defaultState
 	if state._active then
 		error(`[Entity] Compiled query default iterator is not reentrant; use cursor()`)
@@ -1048,7 +1050,7 @@ function CompiledQuery.__iter(self: any): (any, any, nil)
 	return state._next, state, nil
 end
 
-function CompiledQuery.cursor(self: any): any
+CompiledQuery.cursor = function(self: any): any
 	if self._destroyed then
 		error(`[Entity] Compiled query has been destroyed`)
 	end
@@ -1059,7 +1061,7 @@ function CompiledQuery.cursor(self: any): any
 	return setmetatable({ _state = state }, CompiledCursor)
 end
 
-function CompiledQuery._register(self: any, archetype: any): ()
+CompiledQuery._register = function(self: any, archetype: any): ()
 	if self._destroyed then
 		return
 	end
@@ -1080,7 +1082,7 @@ function CompiledQuery._register(self: any, archetype: any): ()
 	})
 end
 
-function CompiledQuery.destroy(self: any): ()
+CompiledQuery.destroy = function(self: any): ()
 	if self._destroyed then
 		return
 	end
@@ -1101,7 +1103,7 @@ function CompiledQuery.destroy(self: any): ()
 	self._destroyed = true
 end
 
-function CompiledQuery._unregister(self: any, archetype: any): ()
+CompiledQuery._unregister = function(self: any, archetype: any): ()
 	for index, plan in self._plans do
 		if plan.archetype == archetype then
 			table.remove(self._plans, index)
@@ -1113,7 +1115,7 @@ end
 local SpawnBundleMethods = {}
 SpawnBundleMethods.__index = SpawnBundleMethods
 
-function SpawnBundleMethods.destroy(self: any): ()
+SpawnBundleMethods.destroy = function(self: any): ()
 	if self._lifecycle.destroyed then
 		return
 	end
@@ -1125,7 +1127,7 @@ end
 local StructuralPatchMethods = {}
 StructuralPatchMethods.__index = StructuralPatchMethods
 
-function StructuralPatchMethods.destroy(self: any): ()
+StructuralPatchMethods.destroy = function(self: any): ()
 	if self._lifecycle.destroyed then
 		return
 	end
@@ -1135,7 +1137,7 @@ function StructuralPatchMethods.destroy(self: any): ()
 	self._lifecycle.destroyed = true
 end
 
---##========== PUBLIC API ==========##--
+--» PUBLIC FUNCTIONS «--
 
 local EntityStore = {}
 EntityStore.__index = EntityStore
@@ -1159,12 +1161,11 @@ export type EntityStore = typeof(setmetatable(
 		_pairsByTarget: { [number]: { [number]: boolean } },
 		_pairsByRelation: { [number]: { [number]: boolean } },
 		_sparse: { [number]: { [Entity]: any } },
-		_componentMetadata: { [number]: ComponentMetadata },
 	},
 	EntityStore
 ))
 
-function EntityStore.new(): EntityStore
+EntityStore.new = function(): EntityStore
 	local self = setmetatable({}, EntityStore) :: EntityStore
 
 	self._entityIndex = {
@@ -1188,14 +1189,13 @@ function EntityStore.new(): EntityStore
 	self._pairsByTarget = {}
 	self._pairsByRelation = {}
 	self._sparse = {}
-	self._componentMetadata = Component.metadata
 
 	self._root = Archetype.createRoot(self)
 
 	return self
 end
 
-function EntityStore.compile(self: EntityStore, query: any): any
+EntityStore.compile = function(self: EntityStore, query: any): any
 	if _queryTouchesSparse(query) then
 		error(`[Entity] Compiled queries do not support sparse filters`)
 	end
@@ -1238,11 +1238,11 @@ function EntityStore.compile(self: EntityStore, query: any): any
 	return compiled
 end
 
-function EntityStore.assertStructuralMutationAllowed(self: EntityStore): ()
+EntityStore.assertStructuralMutationAllowed = function(self: EntityStore): ()
 	_assertStructuralMutationAllowed(self)
 end
 
-function EntityStore.bundle(self: EntityStore, ...: number): SpawnBundle
+EntityStore.bundle = function(self: EntityStore, ...: number): SpawnBundle
 	local memberCount = select(`#`, ...)
 	if memberCount == 0 then
 		error(`[Entity] Bundle requires at least one component id`)
@@ -1264,7 +1264,7 @@ function EntityStore.bundle(self: EntityStore, ...: number): SpawnBundle
 			error(`[Entity] Duplicate bundle component id {componentId}`)
 		end
 
-		local componentMetadata = self._componentMetadata[componentId]
+		local componentMetadata = Component.metadataOf(componentId)
 		if not componentMetadata then
 			error(`[Entity] Unknown bundle component id {componentId}`)
 		end
@@ -1353,7 +1353,7 @@ function EntityStore.bundle(self: EntityStore, ...: number): SpawnBundle
 	}, SpawnBundleMethods)) :: SpawnBundle
 end
 
-function EntityStore.patch(self: EntityStore, definition: StructuralPatchSpec): StructuralPatch
+EntityStore.patch = function(self: EntityStore, definition: StructuralPatchSpec): StructuralPatch
 	if type(definition) ~= `table` then
 		error(`[Entity] Structural patch definition must be a table`)
 	end
@@ -1402,7 +1402,7 @@ function EntityStore.patch(self: EntityStore, definition: StructuralPatchSpec): 
 				error(`[Entity] {reason} structural patch component id {componentId}`)
 			end
 
-			local componentMetadata = self._componentMetadata[componentId]
+			local componentMetadata = Component.metadataOf(componentId)
 			if not componentMetadata then
 				error(`[Entity] Unknown structural patch component id {componentId}`)
 			end
@@ -1460,18 +1460,18 @@ function EntityStore.patch(self: EntityStore, definition: StructuralPatchSpec): 
 	return patch
 end
 
-function EntityStore.recordOfAny(self: EntityStore, entity: Entity): Record?
+EntityStore.recordOfAny = function(self: EntityStore, entity: Entity): Record?
 	return self._entityIndex.sparseArray[(entity % ENTITY_MASK)]
 end
 
-function EntityStore.spawn(self: EntityStore): Entity
+EntityStore.spawn = function(self: EntityStore): Entity
 	_assertStructuralMutationAllowed(self)
 
 	local id = _indexNewId(self._entityIndex, self._root)
 	return id
 end
 
-function EntityStore.spawnBundle(self: EntityStore, bundle: SpawnBundle, ...: any): Entity
+EntityStore.spawnBundle = function(self: EntityStore, bundle: SpawnBundle, ...: any): Entity
 	if bundle._lifecycle.destroyed then
 		error(`[Entity] Spawn bundle has been destroyed`)
 	end
@@ -1515,7 +1515,7 @@ function EntityStore.spawnBundle(self: EntityStore, bundle: SpawnBundle, ...: an
 	return id
 end
 
-function EntityStore.despawn(self: EntityStore, id: Entity): ()
+EntityStore.despawn = function(self: EntityStore, id: Entity): ()
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		return
@@ -1534,17 +1534,17 @@ function EntityStore.despawn(self: EntityStore, id: Entity): ()
 	_indexRemove(self._entityIndex, id)
 end
 
-function EntityStore.isAlive(self: EntityStore, id: Entity): boolean
+EntityStore.isAlive = function(self: EntityStore, id: Entity): boolean
 	return _indexTryGet(self._entityIndex, id) ~= nil
 end
 
-function EntityStore.add(self: EntityStore, id: Entity, componentId: number, data: any): ()
+EntityStore.add = function(self: EntityStore, id: Entity, componentId: number, data: any): ()
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		error(`[Entity] Cannot add component to non-alive entity {id}`)
 	end
 
-	local metadata = self._componentMetadata[componentId]
+	local metadata = Component.metadataOf(componentId)
 	if metadata and metadata.isPair then
 		local relation = Component.pairFirst(componentId)
 		if Cleanup.isExclusive(relation) then
@@ -1598,14 +1598,14 @@ function EntityStore.add(self: EntityStore, id: Entity, componentId: number, dat
 	end
 end
 
-function EntityStore.addComponent(self: EntityStore, id: Entity, component: ComponentKey, data: { [string]: any }): ()
+EntityStore.addComponent = function(self: EntityStore, id: Entity, component: ComponentKey, data: { [string]: any }): ()
 	EntityStore.add(self, id, _keyOf(component), data)
 end
 
 -- Tag = zero-data component. It joins the archetype signature (so queries and
 -- hasComponent see it) but its column is the shared NULL_ARRAY, so no per-entity
 -- data is written or moved. Compare addComponent, which writes a data column.
-function EntityStore.addTag(self: EntityStore, id: Entity, component: ComponentKey): ()
+EntityStore.addTag = function(self: EntityStore, id: Entity, component: ComponentKey): ()
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		error(`[Entity] Cannot add tag to non-alive entity {id}`)
@@ -1630,7 +1630,7 @@ end
 -- per-entry wrapper allocation. A nil datas[k] is a tag (joins the signature, no
 -- column write); a non-nil datas[k] writes its column after the move. Sparse and
 -- pair ids are NOT accepted here -- the World boundary routes those.
-function EntityStore.addComponents(self: EntityStore, id: Entity, keys: { number }, datas: { any }, count: number): ()
+EntityStore.addComponents = function(self: EntityStore, id: Entity, keys: { number }, datas: { any }, count: number): ()
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		error(`[Entity] Cannot add components to non-alive entity {id}`)
@@ -1667,21 +1667,21 @@ function EntityStore.addComponents(self: EntityStore, id: Entity, keys: { number
 	end
 end
 
-function EntityStore.mutate(self: EntityStore, id: Entity, patch: StructuralPatch, ...: any): ()
+EntityStore.mutate = function(self: EntityStore, id: Entity, patch: StructuralPatch, ...: any): ()
 	_mutatePatch(self, id, patch, false, ...)
 end
 
-function EntityStore.mutateObserved(self: EntityStore, id: Entity, patch: StructuralPatch, ...: any): { any }
+EntityStore.mutateObserved = function(self: EntityStore, id: Entity, patch: StructuralPatch, ...: any): { any }
 	return _mutatePatch(self, id, patch, true, ...) :: { any }
 end
 
-function EntityStore.read(self: EntityStore, id: Entity, componentId: number): any
+EntityStore.read = function(self: EntityStore, id: Entity, componentId: number): any
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		error(`[Entity] Cannot get component from non-alive entity {id}`)
 	end
 
-	local metadata = self._componentMetadata[componentId]
+	local metadata = Component.metadataOf(componentId)
 	if metadata and metadata.isSparse then
 		local sparseColumn = self._sparse[componentId]
 		return if sparseColumn then sparseColumn[id] else nil
@@ -1695,7 +1695,7 @@ function EntityStore.read(self: EntityStore, id: Entity, componentId: number): a
 	return column[record.row]
 end
 
-function EntityStore.get(self: EntityStore, id: Entity, component: ComponentKey): { [string]: any }?
+EntityStore.get = function(self: EntityStore, id: Entity, component: ComponentKey): { [string]: any }?
 	return EntityStore.read(self, id, _keyOf(component))
 end
 
@@ -1703,7 +1703,7 @@ end
 -- then each id is read straight from its column (or sparse map) by row, so N
 -- components cost one _indexTryGet, not N. Ids arrive already resolved from the
 -- World boundary; sparse and archetypal ids are both handled, in argument order.
-function EntityStore.getMany(self: EntityStore, id: Entity, ...: number): ...any
+EntityStore.getMany = function(self: EntityStore, id: Entity, ...: number): ...any
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		error(`[Entity] Cannot get components from non-alive entity {id}`)
@@ -1728,13 +1728,13 @@ function EntityStore.getMany(self: EntityStore, id: Entity, ...: number): ...any
 	return table.unpack(results, 1, count)
 end
 
-function EntityStore.write(self: EntityStore, id: Entity, componentId: number, data: any): ()
+EntityStore.write = function(self: EntityStore, id: Entity, componentId: number, data: any): ()
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		error(`[Entity] Cannot set component on non-alive entity {id}`)
 	end
 
-	local metadata = self._componentMetadata[componentId]
+	local metadata = Component.metadataOf(componentId)
 	if metadata and metadata.isTag then
 		error(`[Entity] Cannot store data on tag {componentId}`)
 	end
@@ -1767,17 +1767,17 @@ function EntityStore.write(self: EntityStore, id: Entity, componentId: number, d
 	destination.columnsMap[componentId][record.row] = data
 end
 
-function EntityStore.set(self: EntityStore, id: Entity, component: ComponentKey, data: { [string]: any }): ()
+EntityStore.set = function(self: EntityStore, id: Entity, component: ComponentKey, data: { [string]: any }): ()
 	EntityStore.write(self, id, _keyOf(component), data)
 end
 
-function EntityStore.remove(self: EntityStore, id: Entity, componentId: number): ()
+EntityStore.remove = function(self: EntityStore, id: Entity, componentId: number): ()
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		return
 	end
 
-	local metadata = self._componentMetadata[componentId]
+	local metadata = Component.metadataOf(componentId)
 	if metadata and metadata.isSparse then
 		local sparseColumn = self._sparse[componentId]
 		if sparseColumn then
@@ -1805,17 +1805,17 @@ function EntityStore.remove(self: EntityStore, id: Entity, componentId: number):
 	_moveEntity(self, id, record, destination)
 end
 
-function EntityStore.removeComponent(self: EntityStore, id: Entity, component: ComponentKey): ()
+EntityStore.removeComponent = function(self: EntityStore, id: Entity, component: ComponentKey): ()
 	EntityStore.remove(self, id, _keyOf(component))
 end
 
-function EntityStore.has(self: EntityStore, id: Entity, componentId: number): boolean
+EntityStore.has = function(self: EntityStore, id: Entity, componentId: number): boolean
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		return false
 	end
 
-	local metadata = self._componentMetadata[componentId]
+	local metadata = Component.metadataOf(componentId)
 	if metadata and metadata.isSparse then
 		local sparseColumn = self._sparse[componentId]
 		return sparseColumn ~= nil and sparseColumn[id] ~= nil
@@ -1824,15 +1824,15 @@ function EntityStore.has(self: EntityStore, id: Entity, componentId: number): bo
 	return record.archetype.columnsMap[componentId] ~= nil
 end
 
-function EntityStore.hasComponent(self: EntityStore, id: Entity, component: ComponentKey): boolean
+EntityStore.hasComponent = function(self: EntityStore, id: Entity, component: ComponentKey): boolean
 	return EntityStore.has(self, id, _keyOf(component))
 end
 
-function EntityStore.markDirty(self: EntityStore, id: Entity, name: string): ()
+EntityStore.markDirty = function(self: EntityStore, id: Entity, name: string): ()
 	table.insert(self._dirty, { entity = id, name = name })
 end
 
-function EntityStore.flushDirty(self: EntityStore): { DirtyEntry }
+EntityStore.flushDirty = function(self: EntityStore): { DirtyEntry }
 	local copy = table.clone(self._dirty)
 
 	table.clear(self._dirty)
@@ -1840,7 +1840,7 @@ function EntityStore.flushDirty(self: EntityStore): { DirtyEntry }
 	return copy
 end
 
-function EntityStore.getEntitiesWithComponent(self: EntityStore, component: ComponentKey): { Entity }
+EntityStore.getEntitiesWithComponent = function(self: EntityStore, component: ComponentKey): { Entity }
 	local key = _keyOf(component)
 	local result: { Entity } = {}
 
@@ -1861,7 +1861,7 @@ end
 -- Name-keyed so observers, replication and despawn's onRemove pass keep working.
 -- Pair ids have no registered name (nameOf returns nil) and are skipped -- they
 -- carry no named-observer semantics.
-function EntityStore.getAllComponents(self: EntityStore, id: Entity): { [string]: { [string]: any } }?
+EntityStore.getAllComponents = function(self: EntityStore, id: Entity): { [string]: { [string]: any } }?
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		return nil
@@ -1889,7 +1889,7 @@ function EntityStore.getAllComponents(self: EntityStore, id: Entity): { [string]
 	return result
 end
 
-function EntityStore.bindInstance(self: EntityStore, id: Entity, instance: any): ()
+EntityStore.bindInstance = function(self: EntityStore, id: Entity, instance: any): ()
 	if not _indexTryGet(self._entityIndex, id) then
 		error(`[Entity] Cannot bind instance to non-alive entity {id}`)
 	end
@@ -1897,14 +1897,14 @@ function EntityStore.bindInstance(self: EntityStore, id: Entity, instance: any):
 	self._cleanup:bind(id, instance)
 end
 
-function EntityStore.countAlive(self: EntityStore): number
+EntityStore.countAlive = function(self: EntityStore): number
 	return self._entityIndex.aliveCount
 end
 
 -- Iterates the live entity ids (the dense array up to aliveCount). Snapshots
 -- the count at creation, so callers must not spawn/despawn mid-iteration.
 -- The read path replication uses to walk the live set without reaching into internals.
-function EntityStore.eachAlive(self: EntityStore): () -> Entity?
+EntityStore.eachAlive = function(self: EntityStore): () -> Entity?
 	local dense = self._entityIndex.denseArray
 	local count = self._entityIndex.aliveCount
 	local cursor = 0
@@ -1919,7 +1919,7 @@ function EntityStore.eachAlive(self: EntityStore): () -> Entity?
 	end
 end
 
-function EntityStore.collectEntities(self: EntityStore, query: any): { Entity }
+EntityStore.collectEntities = function(self: EntityStore, query: any): { Entity }
 	if _queryTouchesSparse(query) then
 		return self:_collectSparseAware(query)
 	end
@@ -1932,7 +1932,7 @@ end
 -- for. This is the fast read path -- no materialised id array, no per-entity
 -- index resolve. A sparse query falls back to a per-entity walk, since sparse
 -- membership is not archetypal and carries no column to stream.
-function EntityStore.iter(self: EntityStore, query: any): () -> ...any
+EntityStore.iter = function(self: EntityStore, query: any): () -> ...any
 	if _queryTouchesSparse(query) then
 		local entities = self:_collectSparseAware(query)
 		local ids = query._all
@@ -1985,7 +1985,7 @@ end
 -- membership WITHOUT touching any archetype, so the per-entity filter must
 -- re-run every call -- but the archetypal terms resolve exactly as the fast
 -- path would.
-function EntityStore._collectSparseAware(self: EntityStore, query: any): { Entity }
+EntityStore._collectSparseAware = function(self: EntityStore, query: any): { Entity }
 	local allArch, allSparse = _partitionBySparse(query._all)
 	local anyArch, anySparse = _partitionBySparse(query._any)
 	local noneArch, noneSparse = _partitionBySparse(query._none)
@@ -2044,7 +2044,7 @@ function EntityStore._collectSparseAware(self: EntityStore, query: any): { Entit
 	return result
 end
 
-function EntityStore._entityMatchesSparse(
+EntityStore._entityMatchesSparse = function(
 	self: EntityStore,
 	entityId: Entity,
 	allSparse: { number },
@@ -2081,14 +2081,14 @@ function EntityStore._entityMatchesSparse(
 	return true
 end
 
---##========== SPARSE STORAGE ==========##--
+--» SPARSE STORAGE «--
 
 -- A sparse component lives OUTSIDE archetype signatures: its data sits in a
 -- per-component map keyed by entity id, so adding or removing it never moves
 -- the entity between archetypes and never fragments the archetype graph. Keyed
 -- by the packed entity id, a recycled slot's new id cannot read a prior
 -- owner's data even before despawn cleanup runs.
-function EntityStore.setSparse(self: EntityStore, id: Entity, compId: number, data: any): ()
+EntityStore.setSparse = function(self: EntityStore, id: Entity, compId: number, data: any): ()
 	if not _indexTryGet(self._entityIndex, id) then
 		error(`[Entity] Cannot set sparse component on non-alive entity {id}`)
 	end
@@ -2106,7 +2106,7 @@ function EntityStore.setSparse(self: EntityStore, id: Entity, compId: number, da
 	column[id] = data
 end
 
-function EntityStore.getSparse(self: EntityStore, id: Entity, compId: number): any
+EntityStore.getSparse = function(self: EntityStore, id: Entity, compId: number): any
 	if not _indexTryGet(self._entityIndex, id) then
 		error(`[Entity] Cannot get sparse component from non-alive entity {id}`)
 	end
@@ -2119,12 +2119,12 @@ function EntityStore.getSparse(self: EntityStore, id: Entity, compId: number): a
 	return column[id]
 end
 
-function EntityStore.hasSparse(self: EntityStore, id: Entity, compId: number): boolean
+EntityStore.hasSparse = function(self: EntityStore, id: Entity, compId: number): boolean
 	local column = self._sparse[compId]
 	return column ~= nil and column[id] ~= nil
 end
 
-function EntityStore.removeSparse(self: EntityStore, id: Entity, compId: number): ()
+EntityStore.removeSparse = function(self: EntityStore, id: Entity, compId: number): ()
 	local column = self._sparse[compId]
 	if not column then
 		return
@@ -2133,12 +2133,12 @@ function EntityStore.removeSparse(self: EntityStore, id: Entity, compId: number)
 	column[id] = nil
 end
 
---##========== PAIR ACCESS ==========##--
+--» PAIR ACCESS «--
 
 -- The live packed entity currently occupying a slot, or nil if that slot is
 -- unused. Recovers the generation a pair strips from its target (jecs
 -- ecs_get_alive), so a pair target read here is the current entity.
-function EntityStore.entityAtSlot(self: EntityStore, slot: number): Entity?
+EntityStore.entityAtSlot = function(self: EntityStore, slot: number): Entity?
 	local index = self._entityIndex
 	local record = index.sparseArray[slot]
 	if not record or record.dense == 0 or record.dense > index.aliveCount then
@@ -2150,7 +2150,7 @@ end
 
 -- The first pair on an entity whose relation matches, or nil. Used by exclusive
 -- relations to find the pair being replaced.
-function EntityStore.findPair(self: EntityStore, id: Entity, relationId: number): number?
+EntityStore.findPair = function(self: EntityStore, id: Entity, relationId: number): number?
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		return nil
@@ -2166,7 +2166,7 @@ function EntityStore.findPair(self: EntityStore, id: Entity, relationId: number)
 end
 
 -- The n-th target of a relation on an entity, as a live entity id, or nil.
-function EntityStore.target(self: EntityStore, id: Entity, relationId: number, n: number): Entity?
+EntityStore.target = function(self: EntityStore, id: Entity, relationId: number, n: number): Entity?
 	local record = _indexTryGet(self._entityIndex, id)
 	if not record then
 		return nil
@@ -2188,7 +2188,7 @@ end
 -- Manual fragmentation sweep (no automatic cadence -- game code decides when):
 -- destroy empty archetypes, then prune the stale _pairsBy* buckets they left
 -- behind. Returns the number of archetypes destroyed.
-function EntityStore.sweep(self: EntityStore): number
+EntityStore.sweep = function(self: EntityStore): number
 	_assertStructuralMutationAllowed(self)
 
 	local destroyed = Archetype.destroyEmpty(self)
@@ -2203,7 +2203,7 @@ function EntityStore.sweep(self: EntityStore): number
 	return destroyed
 end
 
-function EntityStore._pruneStalePairBuckets(self: EntityStore): ()
+EntityStore._pruneStalePairBuckets = function(self: EntityStore): ()
 	local livePairs: { [number]: boolean } = {}
 
 	for _, archetype in self._archetypes do

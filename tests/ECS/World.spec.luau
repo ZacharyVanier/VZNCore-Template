@@ -1508,7 +1508,7 @@ test(`numeric world operations match legacy data behavior and dirty names`, func
 	local numeric = world:spawn()
 	local legacy = world:spawn()
 
-	assert(world._componentMetadata == Component.metadata, `world should alias component metadata`)
+	assert(Component.metadataOf(health.id).name == `Health`, `world operations should use private component metadata`)
 
 	world:add(numeric, health.id, { current = 70 })
 	world:addComponent(legacy, health, { current = 70 })

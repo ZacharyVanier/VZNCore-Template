@@ -1,8 +1,10 @@
--- Component definition registry, id-space and relationship pairs.
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	Component -- defines component handles, IDs, metadata, and pairs.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
 
---##========== DEPENDENCIES ==========##--
+--» DEPENDENCIES & VARIABLES «--
 
 local function tryRequire(robloxPath: any, relativePath: any): any
 	local ok, result = pcall(function()
@@ -16,14 +18,51 @@ end
 
 local ECSTypes = tryRequire(script and script.Parent and script.Parent.Types, "./Types")
 
---##========== TYPES ==========##--
+--» TYPE DEFINITIONS «--
 
 type ComponentDefinition = ECSTypes.ComponentDefinition
 type ComponentMetadata = ECSTypes.ComponentMetadata
 type ComponentOptions = ECSTypes.ComponentOptions
 type Component<T> = ECSTypes.Component<T>
+type ComponentRef<T> = ECSTypes.ComponentRef<T>
 
---##========== CONSTANTS ==========##--
+export type ComponentModule = {
+	Wildcard: number,
+	ChildOf: number,
+	define: <T>(string, T, ComponentOptions?) -> Component<T>,
+	tag: (string) -> Component<nil>,
+	getDefinition: (string) -> ComponentDefinition?,
+	getHandle: (string) -> Component<unknown>?,
+	createInstance: (string, unknown?) -> unknown,
+	isDefined: (string) -> boolean,
+	isTag: (string) -> boolean,
+	getReplicatedNames: () -> { string },
+	isReplicated: (string) -> boolean,
+	isSparse: (string) -> boolean,
+	isUnboxed: (number) -> boolean,
+	isSingleton: (string) -> boolean,
+	idOf: (string) -> number,
+	toId: (ComponentRef<unknown>) -> number,
+	assertRegisteredId: (unknown) -> number,
+	nameOf: (number) -> string?,
+	lowId: (number) -> number,
+	newEntity: () -> number,
+	Pair: (ComponentRef<unknown>, ComponentRef<unknown>) -> number,
+	isPair: (number) -> boolean,
+	pairFirst: (number) -> number,
+	pairSecond: (number) -> number,
+	isTagId: (number) -> boolean,
+	isSparseId: (number) -> boolean,
+	classify: (number) -> (boolean, boolean, boolean),
+	classifyRef: (ComponentRef<unknown>) -> (number, boolean, boolean, boolean),
+	metadataOf: (number) -> ComponentMetadata?,
+}
+
+type ComponentInternal = ComponentModule & {
+	_reset: () -> (),
+}
+
+--» CONSTANTS «--
 
 -- Pair packing mirrors jecs ecs_pair: the low 24 bits hold the target's slot,
 -- the next 24 the relation's low id, and PAIR_OFFSET marks the value as a pair.
@@ -38,10 +77,10 @@ local PAIR_OFFSET = 2 ^ 48
 -- ENTITY_MASK so they pack cleanly as pair relations/targets.
 local BUILTIN_BASE = 2 ^ 20
 
---##========== PRIVATE STATE ==========##--
+--» PRIVATE STATE «--
 
 local _definitions: { [string]: ComponentDefinition } = {}
-local _handles: { [string]: Component<any> } = {}
+local _handles: { [string]: Component<unknown> } = {}
 
 -- The id space. Every component name is interned to a unique integer id the
 -- moment it is first seen (whether via define/tag or a raw string reaching the
@@ -55,17 +94,16 @@ local _unboxedIds: { [number]: boolean } = {}
 local _metadata: { [number]: ComponentMetadata } = {}
 local _nextId: number = 0
 
---##========== PUBLIC API ==========##--
+--» PUBLIC FUNCTIONS «--
 
-local Component = {}
-Component.metadata = _metadata
+local Component = {} :: ComponentInternal
 
 -- Wildcard matches any relation or any target in a pair query. ChildOf is the
 -- builtin hierarchy relation (a tag, so its pairs store no column).
 Component.Wildcard = BUILTIN_BASE + 1
 Component.ChildOf = BUILTIN_BASE + 2
 
---##========== PRIVATE FUNCTIONS ==========##--
+--» PRIVATE FUNCTIONS «--
 
 local function _seedBuiltins(): ()
 	_nameToId["Wildcard"] = Component.Wildcard
@@ -107,7 +145,7 @@ local function _internName(name: string): number
 	return _nextId
 end
 
-local function _refToId(ref: any): number
+local function _refToId(ref: ComponentRef<unknown>): number
 	local kind = type(ref)
 
 	if kind == "number" then
@@ -115,7 +153,7 @@ local function _refToId(ref: any): number
 	end
 
 	if kind == "table" then
-		return (ref :: any).id
+		return ((ref :: unknown) :: Component<unknown>).id
 	end
 
 	return _internName(ref :: string)
@@ -135,19 +173,19 @@ local function _shallowMerge(base: { [string]: any }, overrides: { [string]: any
 	return merged
 end
 
-local function _register(
+local function _register<T>(
 	name: string,
-	defaults: { [string]: any },
+	defaults: T,
 	options: ComponentOptions?,
 	isTag: boolean
-): Component<any>
+): Component<T>
 	assert(not _definitions[name], `[Component] Component already defined: {name}`)
 
 	local resolvedOptions = options or {}
 
 	_definitions[name] = {
 		name = name,
-		defaults = defaults,
+		defaults = if isTag then {} else defaults,
 		singleton = resolvedOptions.singleton or false,
 		replicated = resolvedOptions.replicated or false,
 		isTag = isTag,
@@ -182,18 +220,18 @@ local function _register(
 		id = id,
 		name = name,
 		isTag = isTag,
-	}) :: any) :: Component<any>
+	}) :: unknown) :: Component<T>
 
 	_handles[name] = handle
 
 	return handle
 end
 
---##========== ID SPACE ==========##--
+--» ID SPACE «--
 
 -- Interns and returns the stable numeric id for a name. Called at the World
 -- boundary so a raw string reaches storage as an id even if never define()d.
-function Component.idOf(name: string): number
+Component.idOf = function(name: string): number
 	return _nameToId[name] or _internName(name)
 end
 
@@ -201,7 +239,7 @@ end
 -- composing type-dispatch + idOf, but a string takes the _nameToId fast lookup
 -- inline (no _internName frame on the interned case) and a number/handle returns
 -- immediately. World's _resolveId aliases this; churn resolves twice per op.
-function Component.toId(ref: any): number
+Component.toId = function(ref: ComponentRef<unknown>): number
 	local kind = type(ref)
 
 	if kind == "number" then
@@ -212,10 +250,10 @@ function Component.toId(ref: any): number
 		return _nameToId[ref] or _internName(ref)
 	end
 
-	return (ref :: any).id
+	return ((ref :: unknown) :: Component<unknown>).id
 end
 
-function Component.assertRegisteredId(id: any): number
+Component.assertRegisteredId = function(id: unknown): number
 	if type(id) ~= `number` or id % 1 ~= 0 or id <= 0 then
 		error(`[Component] Invalid component id {tostring(id)}`)
 	end
@@ -229,12 +267,12 @@ end
 
 -- Reverse of idOf. Returns nil for ids with no registered name (e.g. pairs),
 -- which is how name-keyed layers (observers, replication) skip them.
-function Component.nameOf(id: number): string?
+Component.nameOf = function(id: number): string?
 	return _idToName[id]
 end
 
 -- Low 24 bits of an id: the slot of an entity, stripping any generation.
-function Component.lowId(id: number): number
+Component.lowId = function(id: number): number
 	return id % ENTITY_MASK
 end
 
@@ -244,16 +282,16 @@ end
 -- number. That disjointness is what makes an entity-as-relation pair
 -- Pair(someEntity, x) sound: isTagId(slot) finds no component at that number
 -- and so cannot reinterpret the entity's slot as a tag/data component.
-function Component.newEntity(): number
+Component.newEntity = function(): number
 	_nextId += 1
 	return _nextId
 end
 
---##========== PAIRS ==========##--
+--» PAIRS «--
 
 -- Packs a (relation, target) pair into one id. Relation/target may be a name,
 -- a handle, or a raw id/entity; only the low 24 bits of each are stored.
-function Component.Pair(relation: any, target: any): number
+Component.Pair = function(relation: ComponentRef<unknown>, target: ComponentRef<unknown>): number
 	local r = _refToId(relation) % ENTITY_MASK
 	local t = _refToId(target) % ENTITY_MASK
 	local pair = t + (r * ENTITY_MASK) + PAIR_OFFSET
@@ -271,39 +309,39 @@ function Component.Pair(relation: any, target: any): number
 	return pair
 end
 
-function Component.isPair(id: number): boolean
+Component.isPair = function(id: number): boolean
 	return id >= PAIR_OFFSET
 end
 
 -- The relation (predicate) low id of a pair.
-function Component.pairFirst(id: number): number
+Component.pairFirst = function(id: number): number
 	return (id - PAIR_OFFSET) // ENTITY_MASK
 end
 
 -- The target (object) slot of a pair.
-function Component.pairSecond(id: number): number
+Component.pairSecond = function(id: number): number
 	return (id - PAIR_OFFSET) % ENTITY_MASK
 end
 
---##========== DEFINITION API ==========##--
+--» DEFINITION API «--
 
-function Component.define<T>(name: string, defaults: T, options: ComponentOptions?): Component<T>
-	return (_register(name, defaults :: any, options, false) :: any) :: Component<T>
+Component.define = function<T>(name: string, defaults: T, options: ComponentOptions?): Component<T>
+	return _register(name, defaults, options, false)
 end
 
-function Component.tag(name: string): Component<nil>
-	return (_register(name, {}, nil, true) :: any) :: Component<nil>
+Component.tag = function(name: string): Component<nil>
+	return _register(name, nil, nil, true)
 end
 
-function Component.getDefinition(name: string): ComponentDefinition?
+Component.getDefinition = function(name: string): ComponentDefinition?
 	return _definitions[name]
 end
 
-function Component.getHandle(name: string): Component<any>?
+Component.getHandle = function(name: string): Component<unknown>?
 	return _handles[name]
 end
 
-function Component.createInstance(name: string, overrides: any?): any
+Component.createInstance = function(name: string, overrides: unknown?): unknown
 	local definition = _definitions[name]
 	assert(definition, `[Component] Cannot create instance of undefined component: {name}`)
 
@@ -316,18 +354,20 @@ function Component.createInstance(name: string, overrides: any?): any
 		return definition.defaults
 	end
 
+	local defaults = (definition.defaults :: unknown) :: { [string]: any }
+
 	if overrides then
-		return _shallowMerge(definition.defaults, overrides)
+		return _shallowMerge(defaults, (overrides :: unknown) :: { [string]: any })
 	end
 
-	return _shallowCopy(definition.defaults)
+	return _shallowCopy(defaults)
 end
 
-function Component.isDefined(name: string): boolean
+Component.isDefined = function(name: string): boolean
 	return _definitions[name] ~= nil
 end
 
-function Component.isTag(name: string): boolean
+Component.isTag = function(name: string): boolean
 	local definition = _definitions[name]
 	return definition ~= nil and definition.isTag == true
 end
@@ -335,7 +375,7 @@ end
 -- Id-keyed tag test for the storage layer. Tag membership is hoisted into a
 -- flag map at define time so this is one lookup, not a name + definition walk.
 -- A pair is a tag iff its relation is a tag (ChildOf), storing no column.
-function Component.isTagId(id: number): boolean
+Component.isTagId = function(id: number): boolean
 	if id >= PAIR_OFFSET then
 		return _tagIds[(id - PAIR_OFFSET) // ENTITY_MASK] == true
 	end
@@ -346,7 +386,7 @@ end
 -- Every currently-defined replicated component name. Replication registers an
 -- onAdd observer per name so prefab-applied replicated components reach
 -- already-connected clients (they otherwise never mark dirty on add).
-function Component.getReplicatedNames(): { string }
+Component.getReplicatedNames = function(): { string }
 	local names: { string } = {}
 
 	for name, definition in _definitions do
@@ -358,7 +398,7 @@ function Component.getReplicatedNames(): { string }
 	return names
 end
 
-function Component.isReplicated(name: string): boolean
+Component.isReplicated = function(name: string): boolean
 	local definition = _definitions[name]
 	if not definition then
 		return false
@@ -367,7 +407,7 @@ function Component.isReplicated(name: string): boolean
 	return definition.replicated == true
 end
 
-function Component.isSparse(name: string): boolean
+Component.isSparse = function(name: string): boolean
 	local definition = _definitions[name]
 	if not definition then
 		return false
@@ -381,7 +421,7 @@ end
 -- despawn cleanup traits all read pairs out of archetype types, so a sparse
 -- relation still stores its pairs archetypally. Sparse applies only to plain
 -- (non-pair) component ids.
-function Component.isSparseId(id: number): boolean
+Component.isSparseId = function(id: number): boolean
 	if id >= PAIR_OFFSET then
 		return false
 	end
@@ -393,7 +433,7 @@ end
 -- the archetype column instead of a per-entity data table, so consumers read it
 -- as the value (not a { field = value } table). Pairs are never unboxed. Opt in
 -- via Component.define(name, default, { unboxed = true }).
-function Component.isUnboxed(id: number): boolean
+Component.isUnboxed = function(id: number): boolean
 	if id >= PAIR_OFFSET then
 		return false
 	end
@@ -407,7 +447,7 @@ end
 -- three: a pair is a tag iff its relation is a tag and is never sparse; a plain
 -- id reads the tag and sparse flag maps directly. World's add/set paths (which
 -- need all three) use this; single-bit read paths keep the individual predicate.
-function Component.classify(id: number): (boolean, boolean, boolean)
+Component.classify = function(id: number): (boolean, boolean, boolean)
 	if id >= PAIR_OFFSET then
 		return true, _tagIds[(id - PAIR_OFFSET) // ENTITY_MASK] == true, false
 	end
@@ -419,7 +459,7 @@ end
 -- plus the same (isPair, isTag, isSparse) as classify, so those paths make one
 -- Component call instead of a toId call followed by a classify call. The two
 -- flag-map lookups are irreducible; this only removes the extra call frame.
-function Component.classifyRef(ref: any): (number, boolean, boolean, boolean)
+Component.classifyRef = function(ref: ComponentRef<unknown>): (number, boolean, boolean, boolean)
 	local kind = type(ref)
 	local id: number
 
@@ -428,7 +468,7 @@ function Component.classifyRef(ref: any): (number, boolean, boolean, boolean)
 	elseif kind == "string" then
 		id = _nameToId[ref] or _internName(ref)
 	else
-		id = (ref :: any).id
+		id = ((ref :: unknown) :: Component<unknown>).id
 	end
 
 	if id >= PAIR_OFFSET then
@@ -438,7 +478,7 @@ function Component.classifyRef(ref: any): (number, boolean, boolean, boolean)
 	return id, false, _tagIds[id] == true, _sparseIds[id] == true
 end
 
-function Component.isSingleton(name: string): boolean
+Component.isSingleton = function(name: string): boolean
 	local definition = _definitions[name]
 	if not definition then
 		return false
@@ -447,7 +487,12 @@ function Component.isSingleton(name: string): boolean
 	return definition.singleton == true
 end
 
-function Component._reset(): ()
+-- Returns metadata by value reference while keeping the mutable registry private.
+Component.metadataOf = function(id: number): ComponentMetadata?
+	return _metadata[id]
+end
+
+Component._reset = function(): ()
 	table.clear(_definitions)
 	table.clear(_handles)
 	table.clear(_nameToId)

@@ -1,85 +1,125 @@
--- ECS observer registry for component lifecycle events
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	Observer -- registers component lifecycle callbacks for one World.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
 
---##========== TYPES ==========##--
+--» TYPE DEFINITIONS «--
 
-type ObserverCallback = (entity: number, data: any) -> ()
+export type ObserverEvent = "onAdd" | "onChange" | "onRemove"
+export type ObserverCallback = (number, unknown) -> ()
+
+export type Observer = {
+	register: (Observer, ObserverEvent, string, ObserverCallback) -> (),
+	fire: (Observer, ObserverEvent, string, number, unknown) -> (),
+	hasListeners: (Observer, ObserverEvent, string) -> boolean,
+	clear: (Observer) -> (),
+}
 
 type EventMap = {
 	[string]: { ObserverCallback },
 }
 
---##========== PUBLIC API ==========##--
+type ObserverState = {
+	CallbacksByEvent: { [ObserverEvent]: EventMap },
+}
 
-local Observer = {}
+type ObserverFactory = {
+	__index: ObserverFactory,
+	new: () -> Observer,
+	register: (Observer, ObserverEvent, string, ObserverCallback) -> (),
+	fire: (Observer, ObserverEvent, string, number, unknown) -> (),
+	hasListeners: (Observer, ObserverEvent, string) -> boolean,
+	clear: (Observer) -> (),
+}
+
+--» CLASS DEFINITION «--
+
+local Observer = {} :: ObserverFactory
 Observer.__index = Observer
 
-export type Observer = typeof(setmetatable(
-	{} :: {
-		onAdd: EventMap,
-		onChange: EventMap,
-		onRemove: EventMap,
-		_empty: boolean,
-	},
-	Observer
-))
+-- Callback maps remain private so callers cannot mutate dispatch order or state.
+local StateByObserver: { [Observer]: ObserverState } = {}
 
-function Observer.new(): Observer
-	local self = setmetatable({}, Observer) :: Observer
+local GetState = function(self: Observer): ObserverState
+	local State = StateByObserver[self]
+	assert(State ~= nil, "Observer is not initialized")
+	return State
+end
 
-	self.onAdd = {}
-	self.onChange = {}
-	self.onRemove = {}
-	self._empty = true
+--» CONSTRUCTOR «--
+
+Observer.new = function(): Observer
+	local self = (setmetatable({}, Observer) :: unknown) :: Observer
+	StateByObserver[self] = {
+		CallbacksByEvent = {
+			onAdd = {},
+			onChange = {},
+			onRemove = {},
+		},
+	}
 
 	return self
 end
 
-function Observer.register(self: Observer, eventType: string, componentName: string, callback: ObserverCallback): ()
-	local group = (self :: any)[eventType] :: EventMap?
-	if not group then
+--» PUBLIC METHODS «--
+
+-- Invalid event names are neutral fallbacks for compatibility with internal dynamic dispatch.
+Observer.register = function(
+	self: Observer,
+	EventType: ObserverEvent,
+	ComponentName: string,
+	Callback: ObserverCallback
+): ()
+	local Group = GetState(self).CallbacksByEvent[EventType]
+	if Group == nil then
 		return
 	end
 
-	if not group[componentName] then
-		group[componentName] = {}
+	local Callbacks = Group[ComponentName]
+	if Callbacks == nil then
+		Callbacks = {}
+		Group[ComponentName] = Callbacks
 	end
 
-	table.insert(group[componentName], callback)
-
-	self._empty = false
+	table.insert(Callbacks, Callback)
 end
 
-function Observer.fire(self: Observer, eventType: string, componentName: string, entity: number, data: any): ()
-	local group = (self :: any)[eventType] :: EventMap?
-	if not group then
+Observer.fire = function(
+	self: Observer,
+	EventType: ObserverEvent,
+	ComponentName: string,
+	Entity: number,
+	Data: unknown
+): ()
+	local Group = GetState(self).CallbacksByEvent[EventType]
+	if Group == nil then
 		return
 	end
 
-	local callbacks = group[componentName]
-	if not callbacks then
+	local Callbacks = Group[ComponentName]
+	if Callbacks == nil then
 		return
 	end
 
-	for _, callback in callbacks do
-		callback(entity, data)
+	for _, Callback in Callbacks do
+		Callback(Entity, Data)
 	end
 end
 
--- True if at least one callback is registered for this event + component. The
--- caller uses it to skip the pre-fetch and dispatch entirely on the common
--- zero-listener path (register only ever adds, so a non-nil bucket means >= 1).
-function Observer.hasListeners(self: Observer, eventType: string, componentName: string): boolean
-	local group = (self :: any)[eventType] :: EventMap?
-	return group ~= nil and group[componentName] ~= nil
+-- Returns false when no callback is registered for the exact event/component pair.
+Observer.hasListeners = function(self: Observer, EventType: ObserverEvent, ComponentName: string): boolean
+	local Group = GetState(self).CallbacksByEvent[EventType]
+	return Group ~= nil and Group[ComponentName] ~= nil
 end
 
-function Observer.clear(self: Observer): ()
-	table.clear(self.onAdd)
-	table.clear(self.onChange)
-	table.clear(self.onRemove)
-	self._empty = true
+Observer.clear = function(self: Observer): ()
+	local State = GetState(self)
+	for _, Group in State.CallbacksByEvent do
+		table.clear(Group)
+	end
 end
+
+--» MODULE EXPORT «--
 
 return Observer

@@ -1,8 +1,10 @@
--- ECS world container.
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	World -- owns ECS state, scheduling, relationships, and lifecycle.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
 
---##========== DEPENDENCIES ==========##--
+--» DEPENDENCIES & VARIABLES «--
 
 local function tryRequire(robloxPath: any, relativePath: any): any
 	local ok, result = pcall(function()
@@ -26,7 +28,7 @@ local _storeAdd = EntityStore.add
 local _storeRemove = EntityStore.remove
 local _storeSpawnBundle = EntityStore.spawnBundle
 
---##========== TYPES ==========##--
+--» TYPE DEFINITIONS «--
 
 type Entity = number
 
@@ -54,14 +56,23 @@ export type World = {
 	patch: (World, StructuralPatchSpec) -> StructuralPatch,
 	mutate: (World, Entity, StructuralPatch, ...unknown) -> (),
 	addComponent: <T>(World, Entity, Component<T>, T?) -> (),
+	add: (World, Entity, number, unknown?) -> (),
+	read: (World, Entity, number) -> unknown,
+	write: (World, Entity, number, unknown) -> (),
+	remove: (World, Entity, number) -> (),
+	has: (World, Entity, number) -> boolean,
+	addComponents: (World, Entity, { [ComponentRef<unknown>]: unknown }) -> (),
 	get: <T>(World, Entity, Component<T>) -> T?,
+	getMany: (World, Entity, ...ComponentRef<unknown>) -> ...unknown,
 	set: <T>(World, Entity, Component<T>, T) -> (),
 	removeComponent: (World, Entity, ComponentRef<unknown>) -> (),
 	hasComponent: (World, Entity, ComponentRef<unknown>) -> boolean,
 	query: (World, ECSTypes.Query) -> () -> ...unknown,
+	compile: (World, ECSTypes.Query) -> CompiledQuery,
 	target: (World, Entity, ComponentRef<unknown>, number?) -> Entity?,
 	setRelationTrait: (World, ComponentRef<unknown>, ECSTypes.RelationTrait) -> (),
 	markDirty: (World, Entity, ComponentRef<unknown>) -> (),
+	flushDirty: (World) -> { unknown },
 	setSingleton: <T>(World, string, T) -> (),
 	getSingleton: <T>(World, string) -> T?,
 	addSystem: (World, SystemDefinition) -> (),
@@ -74,6 +85,7 @@ export type World = {
 	resume: (World) -> (),
 	isPaused: (World) -> boolean,
 	bindInstance: (World, Entity, unknown) -> (),
+	getBoundInstances: (World, Entity) -> { unknown }?,
 	onAdd: (World, string, ECSTypes.ObserverCallback) -> (),
 	onChange: (World, string, ECSTypes.ObserverCallback) -> (),
 	onRemove: (World, string, ECSTypes.ObserverCallback) -> (),
@@ -119,7 +131,6 @@ type WorldImpl = typeof(setmetatable(
 		_destroyed: boolean,
 		_despawning: { [number]: boolean },
 		_frameNumber: number,
-		_componentMetadata: { [number]: ComponentMetadata },
 	},
 	{} :: WorldMeta
 ))
@@ -129,7 +140,7 @@ type WorldMeta = {
 	Pair: (relation: any, target: any) -> number,
 	ChildOf: number,
 	Wildcard: number,
-	new: () -> WorldImpl,
+	new: () -> World,
 	bundle: (self: WorldImpl, ...number) -> SpawnBundle,
 	patch: (self: WorldImpl, definition: StructuralPatchSpec) -> StructuralPatch,
 	spawn: WorldSpawn,
@@ -178,7 +189,7 @@ type WorldMeta = {
 	_cleanupPairs: (self: WorldImpl, slot: number) -> (),
 }
 
---##========== PRIVATE STATE ==========##--
+--» PRIVATE STATE «--
 
 local CIRCUIT_BREAKER_THRESHOLD = 10
 
@@ -191,7 +202,7 @@ World.Pair = Component.Pair
 World.ChildOf = Component.ChildOf
 World.Wildcard = Component.Wildcard
 
---##========== PRIVATE FUNCTIONS ==========##--
+--» PRIVATE FUNCTIONS «--
 
 local function _sortSystems(systems: { SystemDefinition }): ()
 	table.sort(systems, function(a: SystemDefinition, b: SystemDefinition): boolean
@@ -253,10 +264,10 @@ local function _nameOf(component: any): string?
 	return Component.nameOf(component)
 end
 
---##========== PUBLIC API ==========##--
+--» PUBLIC FUNCTIONS «--
 
-function World.new(): WorldImpl
-	local self = setmetatable({}, World) :: WorldImpl
+World.new = function(): World
+	local self = (setmetatable({}, World) :: unknown) :: WorldImpl
 
 	self._entityStore = EntityStore.new()
 	self._systems = {}
@@ -267,26 +278,33 @@ function World.new(): WorldImpl
 	self._observers = Observer.new()
 	self._frameNumber = 0
 	self._despawning = {}
-	self._componentMetadata = Component.metadata
 
-	return self
+	return (self :: unknown) :: World
 end
 
-function World.bundle(self: WorldImpl, ...: number): SpawnBundle
+World.bundle = function(self: WorldImpl, ...: number): SpawnBundle
 	return EntityStore.bundle(self._entityStore, ...)
 end
 
-function World.patch(self: WorldImpl, definition: StructuralPatchSpec): StructuralPatch
+World.patch = function(self: WorldImpl, definition: StructuralPatchSpec): StructuralPatch
 	return EntityStore.patch(self._entityStore, definition)
 end
 
-function World.spawn(self: WorldImpl, bundle: SpawnBundle?, ...: any): Entity
+World.spawn = function(self: WorldImpl, bundle: SpawnBundle?, ...: any): Entity
 	if bundle == nil then
 		return EntityStore.spawn(self._entityStore)
 	end
 
 	local observers = self._observers
-	if observers._empty then
+	local hasOnAddListener = false
+	for _, componentMetadata in bundle.metadata do
+		local name = componentMetadata.name
+		if name and observers:hasListeners("onAdd", name) then
+			hasOnAddListener = true
+			break
+		end
+	end
+	if not hasOnAddListener then
 		return _storeSpawnBundle(self._entityStore, bundle, ...)
 	end
 
@@ -310,7 +328,7 @@ end
 -- the relation's cleanup trait: "delete" cascades (despawn the holder), "remove"
 -- orphans it (drop the pair, keep it alive). Both directions are snapshotted
 -- before mutating, and recursion is guarded by _despawning against pair cycles.
-function World._cleanupPairs(self: WorldImpl, slot: number): ()
+World._cleanupPairs = function(self: WorldImpl, slot: number): ()
 	local store = self._entityStore
 
 	local asTarget = store._pairsByTarget[slot]
@@ -344,7 +362,7 @@ function World._cleanupPairs(self: WorldImpl, slot: number): ()
 	end
 end
 
-function World.despawn(self: WorldImpl, id: Entity): ()
+World.despawn = function(self: WorldImpl, id: Entity): ()
 	EntityStore.assertStructuralMutationAllowed(self._entityStore)
 
 	local slot = Component.lowId(id)
@@ -369,19 +387,21 @@ function World.despawn(self: WorldImpl, id: Entity): ()
 	self._despawning[slot] = nil
 end
 
-function World.isAlive(self: WorldImpl, id: Entity): boolean
+World.isAlive = function(self: WorldImpl, id: Entity): boolean
 	return EntityStore.isAlive(self._entityStore, id)
 end
 
-function World.add(self: WorldImpl, id: Entity, componentId: number, data: any?): ()
-	local metadata = self._componentMetadata[componentId]
+World.add = function(self: WorldImpl, id: Entity, componentId: number, data: any?): ()
+	local metadata = Component.metadataOf(componentId)
 	if not metadata then
 		_assertRegisteredId(componentId)
 	end
 
 	local observers = self._observers
+	local name = if metadata then metadata.name else nil
+	local hasOnAddListener = name ~= nil and observers:hasListeners("onAdd", name)
 
-	if not Debugger._enabled and observers._empty then
+	if not Debugger._enabled and not hasOnAddListener then
 		_storeAdd(self._entityStore, id, componentId, data)
 		return
 	end
@@ -397,8 +417,7 @@ function World.add(self: WorldImpl, id: Entity, componentId: number, data: any?)
 
 	_storeAdd(self._entityStore, id, componentId, data)
 
-	local name = if metadata then metadata.name else nil
-	if not observers._empty and name and observers:hasListeners("onAdd", name) then
+	if hasOnAddListener and name then
 		observers:fire("onAdd", name, id, data)
 	end
 end
@@ -406,11 +425,11 @@ end
 World.addComponent = (
 	function(self: WorldImpl, id: Entity, component: any, data: any): ()
 		World.add(self, id, _resolveId(component), data)
-	end :: any
+	end :: unknown
 ) :: WorldAdd
 
-function World.read(self: WorldImpl, id: Entity, componentId: number): any
-	if not self._componentMetadata[componentId] then
+World.read = function(self: WorldImpl, id: Entity, componentId: number): any
+	if not Component.metadataOf(componentId) then
 		_assertRegisteredId(componentId)
 	end
 
@@ -424,11 +443,11 @@ end
 World.get = (
 	function(self: WorldImpl, id: Entity, component: any): any
 		return World.read(self, id, _resolveId(component))
-	end :: any
+	end :: unknown
 ) :: WorldGet
 
-function World.write(self: WorldImpl, id: Entity, componentId: number, data: any): ()
-	local metadata = self._componentMetadata[componentId]
+World.write = function(self: WorldImpl, id: Entity, componentId: number, data: any): ()
+	local metadata = Component.metadataOf(componentId)
 	if not metadata then
 		_assertRegisteredId(componentId)
 	end
@@ -448,7 +467,7 @@ function World.write(self: WorldImpl, id: Entity, componentId: number, data: any
 
 	if name then
 		EntityStore.markDirty(self._entityStore, id, name)
-		if not self._observers._empty and self._observers:hasListeners("onChange", name) then
+		if self._observers:hasListeners("onChange", name) then
 			self._observers:fire("onChange", name, id, data)
 		end
 	end
@@ -457,7 +476,7 @@ end
 World.set = (
 	function(self: WorldImpl, id: Entity, component: any, data: any): ()
 		World.write(self, id, _resolveId(component), data)
-	end :: any
+	end :: unknown
 ) :: WorldSet
 
 -- Opt-in bulk add: applies several components in ONE archetype move instead of
@@ -466,7 +485,7 @@ World.set = (
 -- value is ignored (a map cannot hold a nil value). Sparse components keep the
 -- per-entity store path and pairs keep exclusive-replacement semantics via the
 -- single-add path -- only archetypal data/tag components share the batched move.
-function World.addComponents(self: WorldImpl, id: Entity, components: { [any]: any }): ()
+World.addComponents = function(self: WorldImpl, id: Entity, components: { [any]: any }): ()
 	local store = self._entityStore
 	for component in components do
 		local componentId = _resolveId(component)
@@ -550,9 +569,26 @@ function World.addComponents(self: WorldImpl, id: Entity, components: { [any]: a
 	end
 end
 
-function World.mutate(self: WorldImpl, id: Entity, patch: StructuralPatch, ...: any): ()
+World.mutate = function(self: WorldImpl, id: Entity, patch: StructuralPatch, ...: any): ()
 	local observers = self._observers
-	if observers._empty then
+	local hasPatchListener = false
+	for _, metadata in patch.removeMetadata do
+		local name = metadata.name
+		if name and observers:hasListeners("onRemove", name) then
+			hasPatchListener = true
+			break
+		end
+	end
+	if not hasPatchListener then
+		for _, metadata in patch.addMetadata do
+			local name = metadata.name
+			if name and observers:hasListeners("onAdd", name) then
+				hasPatchListener = true
+				break
+			end
+		end
+	end
+	if not hasPatchListener then
 		EntityStore.mutate(self._entityStore, id, patch, ...)
 		return
 	end
@@ -579,7 +615,7 @@ end
 -- Equivalent to N single world:get calls but resolves the entity record once,
 -- skipping the N-1 redundant lookups. Accepts names, handles, or ids; the
 -- single-arg world:get is unchanged.
-function World.getMany(self: WorldImpl, id: Entity, ...: any): ...any
+World.getMany = function(self: WorldImpl, id: Entity, ...: any): ...any
 	local count = select("#", ...)
 	if count == 0 then
 		return
@@ -597,13 +633,15 @@ function World.getMany(self: WorldImpl, id: Entity, ...: any): ...any
 	return EntityStore.getMany(self._entityStore, id, table.unpack(ids, 1, count))
 end
 
-function World.remove(self: WorldImpl, id: Entity, componentId: number): ()
-	if not self._componentMetadata[componentId] then
+World.remove = function(self: WorldImpl, id: Entity, componentId: number): ()
+	if not Component.metadataOf(componentId) then
 		_assertRegisteredId(componentId)
 	end
 
 	local observers = self._observers
-	if observers._empty then
+	local metadata = Component.metadataOf(componentId)
+	local name = if metadata then metadata.name else nil
+	if not name or not observers:hasListeners("onRemove", name) then
 		_storeRemove(self._entityStore, id, componentId)
 		return
 	end
@@ -613,28 +651,24 @@ function World.remove(self: WorldImpl, id: Entity, componentId: number): ()
 		EntityStore.assertStructuralMutationAllowed(store)
 	end
 
-	local metadata = self._componentMetadata[componentId]
-	local name = if metadata then metadata.name else nil
-	if name and observers:hasListeners("onRemove", name) then
-		observers:fire("onRemove", name, id, EntityStore.read(store, id, componentId))
-	end
+	observers:fire("onRemove", name, id, EntityStore.read(store, id, componentId))
 
 	_storeRemove(store, id, componentId)
 end
 
-function World.removeComponent(self: WorldImpl, id: Entity, component: ComponentRef<any>): ()
+World.removeComponent = function(self: WorldImpl, id: Entity, component: ComponentRef<any>): ()
 	World.remove(self, id, _resolveId(component))
 end
 
-function World.has(self: WorldImpl, id: Entity, componentId: number): boolean
-	if not self._componentMetadata[componentId] then
+World.has = function(self: WorldImpl, id: Entity, componentId: number): boolean
+	if not Component.metadataOf(componentId) then
 		_assertRegisteredId(componentId)
 	end
 
 	return EntityStore.has(self._entityStore, id, componentId)
 end
 
-function World.hasComponent(self: WorldImpl, id: Entity, component: ComponentRef<any>): boolean
+World.hasComponent = function(self: WorldImpl, id: Entity, component: ComponentRef<any>): boolean
 	return World.has(self, id, _resolveId(component))
 end
 
@@ -642,31 +676,31 @@ end
 -- do`. Yields the query's all() component data straight from archetype columns --
 -- the fast read path with no per-entity resolve. A system opts into streaming by
 -- calling this inside its run instead of walking the collected entity array.
-function World.query(self: WorldImpl, query: any): () -> ...any
+World.query = function(self: WorldImpl, query: any): () -> ...any
 	_validateQuery(query)
 
 	return EntityStore.iter(self._entityStore, query)
 end
 
-function World.compile(self: WorldImpl, query: any): CompiledQuery
+World.compile = function(self: WorldImpl, query: any): CompiledQuery
 	_validateQuery(query)
 
 	return EntityStore.compile(self._entityStore, query)
 end
 
 -- The n-th (default 1) target entity of a relation on an entity, or nil.
-function World.target(self: WorldImpl, id: Entity, relation: ComponentRef<any>, index: number?): Entity?
+World.target = function(self: WorldImpl, id: Entity, relation: ComponentRef<any>, index: number?): Entity?
 	return EntityStore.target(self._entityStore, id, _resolveId(relation), index or 1)
 end
 
 -- Traits key on the relation's low id, matching what a pair stores (pairFirst
 -- and a despawned entity's slot are both low ids), so component and entity
 -- relations resolve to the same trait key.
-function World.setRelationTrait(_self: WorldImpl, relation: ComponentRef<any>, traits: any): ()
+World.setRelationTrait = function(_self: WorldImpl, relation: ComponentRef<any>, traits: any): ()
 	Cleanup.setRelationTrait(Component.lowId(_resolveId(relation)), traits)
 end
 
-function World.markDirty(self: WorldImpl, id: Entity, component: ComponentRef<any>): ()
+World.markDirty = function(self: WorldImpl, id: Entity, component: ComponentRef<any>): ()
 	local compId = _assertRegisteredId(_resolveId(component))
 	local name = _nameOf(component)
 	if not name then
@@ -686,19 +720,19 @@ function World.markDirty(self: WorldImpl, id: Entity, component: ComponentRef<an
 	self._observers:fire("onChange", name, id, data)
 end
 
-function World.flushDirty(self: WorldImpl): { any }
+World.flushDirty = function(self: WorldImpl): { any }
 	return EntityStore.flushDirty(self._entityStore)
 end
 
-function World.setSingleton(self: WorldImpl, name: string, data: any): ()
+World.setSingleton = function(self: WorldImpl, name: string, data: any): ()
 	self._singletons[name] = data
 end
 
-function World.getSingleton(self: WorldImpl, name: string): any?
+World.getSingleton = function(self: WorldImpl, name: string): any?
 	return self._singletons[name]
 end
 
-function World.addSystem(self: WorldImpl, systemDef: SystemDefinition): ()
+World.addSystem = function(self: WorldImpl, systemDef: SystemDefinition): ()
 	if systemDef.query then
 		_validateQuery(systemDef.query)
 	end
@@ -709,7 +743,7 @@ function World.addSystem(self: WorldImpl, systemDef: SystemDefinition): ()
 	_sortSystems(self._systems)
 end
 
-function World.addSystems(self: WorldImpl, list: { SystemDefinition }): ()
+World.addSystems = function(self: WorldImpl, list: { SystemDefinition }): ()
 	for _, systemDef in list do
 		if systemDef.query then
 			_validateQuery(systemDef.query)
@@ -722,7 +756,7 @@ function World.addSystems(self: WorldImpl, list: { SystemDefinition }): ()
 	_sortSystems(self._systems)
 end
 
-function World.enableSystem(self: WorldImpl, name: string): ()
+World.enableSystem = function(self: WorldImpl, name: string): ()
 	local sys = _findSystem(self._systems, name)
 	if not sys then
 		return
@@ -732,7 +766,7 @@ function World.enableSystem(self: WorldImpl, name: string): ()
 	self._systemErrors[name] = 0
 end
 
-function World.disableSystem(self: WorldImpl, name: string): ()
+World.disableSystem = function(self: WorldImpl, name: string): ()
 	local sys = _findSystem(self._systems, name)
 	if not sys then
 		return
@@ -741,7 +775,7 @@ function World.disableSystem(self: WorldImpl, name: string): ()
 	sys.enabled = false
 end
 
-function World.isSystemEnabled(self: WorldImpl, name: string): boolean
+World.isSystemEnabled = function(self: WorldImpl, name: string): boolean
 	local sys = _findSystem(self._systems, name)
 	if not sys then
 		return false
@@ -750,7 +784,7 @@ function World.isSystemEnabled(self: WorldImpl, name: string): boolean
 	return sys.enabled
 end
 
-function World.step(self: WorldImpl, dt: number): ()
+World.step = function(self: WorldImpl, dt: number): ()
 	if self._paused or self._destroyed then
 		return
 	end
@@ -805,39 +839,39 @@ function World.step(self: WorldImpl, dt: number): ()
 	Debugger.flush(self._frameNumber, activeCount, disabledCount, entityCount)
 end
 
-function World.pause(self: WorldImpl): ()
+World.pause = function(self: WorldImpl): ()
 	self._paused = true
 end
 
-function World.resume(self: WorldImpl): ()
+World.resume = function(self: WorldImpl): ()
 	self._paused = false
 end
 
-function World.isPaused(self: WorldImpl): boolean
+World.isPaused = function(self: WorldImpl): boolean
 	return self._paused
 end
 
-function World.bindInstance(self: WorldImpl, id: Entity, instance: any): ()
+World.bindInstance = function(self: WorldImpl, id: Entity, instance: any): ()
 	EntityStore.bindInstance(self._entityStore, id, instance)
 end
 
-function World.getBoundInstances(self: WorldImpl, id: Entity): { any }?
+World.getBoundInstances = function(self: WorldImpl, id: Entity): { any }?
 	return self._entityStore._cleanup._bindings[id]
 end
 
-function World.onAdd(self: WorldImpl, name: string, callback: ObserverCallback): ()
+World.onAdd = function(self: WorldImpl, name: string, callback: ObserverCallback): ()
 	self._observers:register("onAdd", name, callback)
 end
 
-function World.onChange(self: WorldImpl, name: string, callback: ObserverCallback): ()
+World.onChange = function(self: WorldImpl, name: string, callback: ObserverCallback): ()
 	self._observers:register("onChange", name, callback)
 end
 
-function World.onRemove(self: WorldImpl, name: string, callback: ObserverCallback): ()
+World.onRemove = function(self: WorldImpl, name: string, callback: ObserverCallback): ()
 	self._observers:register("onRemove", name, callback)
 end
 
-function World.spawnPrefab(self: WorldImpl, prefab: PrefabDefinition): Entity
+World.spawnPrefab = function(self: WorldImpl, prefab: PrefabDefinition): Entity
 	local id = self:spawn()
 
 	for _, entry in prefab.components do
@@ -865,7 +899,7 @@ function World.spawnPrefab(self: WorldImpl, prefab: PrefabDefinition): Entity
 	return id
 end
 
-function World.destroy(self: WorldImpl): ()
+World.destroy = function(self: WorldImpl): ()
 	self._destroyed = true
 	self._paused = true
 
@@ -879,18 +913,18 @@ end
 -- Manual fragmentation sweep: destroy empty archetypes and prune stale pair
 -- index buckets. There is no automatic cadence -- game code calls this when it
 -- makes sense (e.g. between waves). Returns the number of archetypes destroyed.
-function World.sweep(self: WorldImpl): number
+World.sweep = function(self: WorldImpl): number
 	return EntityStore.sweep(self._entityStore)
 end
 
 -- Public replication/iteration surface. Game code (e.g. replication) reads the
 -- live entity set and a component snapshot through these instead of reaching
 -- into the private entity store.
-function World.eachAlive(self: WorldImpl): () -> Entity?
+World.eachAlive = function(self: WorldImpl): () -> Entity?
 	return EntityStore.eachAlive(self._entityStore)
 end
 
-function World.getComponents(self: WorldImpl, id: Entity): { [string]: { [string]: any } }?
+World.getComponents = function(self: WorldImpl, id: Entity): { [string]: { [string]: any } }?
 	return EntityStore.getAllComponents(self._entityStore, id)
 end
 
