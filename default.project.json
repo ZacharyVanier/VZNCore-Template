@@ -1,0 +1,11 @@
+{
+  "name": "VZNCore",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "VZNCore": {
+        "$path": "src"
+      }
+    }
+  }
+}

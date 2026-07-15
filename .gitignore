@@ -1,0 +1,13 @@
+Packages/
+DevPackages/
+ServerPackages/
+build.rbxlx
+sourcemap.json
+globalTypes.d.luau
+bench/results/*.json
+!.gitkeep
+.DS_Store
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
