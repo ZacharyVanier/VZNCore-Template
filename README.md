@@ -61,10 +61,11 @@ cached queries, and cleanup traits. The checked-in harness reports
 workload-specific results and does not establish that either runtime is
 universally faster.
 
-Whole-source `luau-lsp analyze` is not yet a passing release gate because the
-dual Roblox/Lune require adapter prevents imported type-family resolution. See
-[static analysis status](docs/static-analysis.md). The repository should remain
-private until that blocker and the final history/metadata audit are resolved.
+Whole-source `luau-lsp analyze` is a documented tooling limitation because the
+dual Roblox/Lune require adapter prevents imported type-family resolution. It
+does not block runtime publication, but VZNCore is not advertised as fully
+`luau-lsp` clean or more type-safe than jecs. See
+[static analysis status](docs/static-analysis.md).
 
 ## License
 
