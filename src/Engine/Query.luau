@@ -21,7 +21,11 @@ local Component = tryRequire(script and script.Parent and script.Parent.Componen
 
 --» TYPE DEFINITIONS «--
 
-type ComponentRef = ECSTypes.ComponentRef<any>
+type ComponentRef = ECSTypes.ComponentRef<unknown>
+
+type ComponentHandle = {
+	id: number,
+}
 
 --» PUBLIC FUNCTIONS «--
 
@@ -41,7 +45,8 @@ local function _resolveId(component: ComponentRef): number
 	end
 
 	if kind == "table" then
-		return (component :: any).id
+		local handle = (component :: unknown) :: ComponentHandle
+		return handle.id
 	end
 
 	return Component.idOf(component :: string)
@@ -54,14 +59,19 @@ local function _isQuery(value: any): boolean
 	return type(value) == "table" and rawget(value, "_all") ~= nil
 end
 
-local function _isComponentRef(value: any): boolean
+local function _isComponentRef(value: unknown): boolean
 	local kind = type(value)
 
 	if kind == "string" or kind == "number" then
 		return true
 	end
 
-	return kind == "table" and (value :: any).id ~= nil
+	if kind ~= "table" then
+		return false
+	end
+
+	local handle = (value :: unknown) :: ComponentHandle
+	return handle.id ~= nil
 end
 
 local function _clone(self: QueryImpl): QueryImpl

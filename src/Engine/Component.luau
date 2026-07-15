@@ -55,10 +55,10 @@ export type ComponentModule = {
 	isSparseId: (number) -> boolean,
 	classify: (number) -> (boolean, boolean, boolean),
 	classifyRef: (ComponentRef<unknown>) -> (number, boolean, boolean, boolean),
-	metadataOf: (number) -> ComponentMetadata?,
 }
 
 type ComponentInternal = ComponentModule & {
+	metadataOf: (number) -> ComponentMetadata?,
 	_reset: () -> (),
 }
 
