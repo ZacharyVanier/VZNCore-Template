@@ -1,8 +1,10 @@
--- Debug logging, runtime lints and world inspection for ECS systems.
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	Debugger -- provides runtime diagnostics, lints, and timing reports.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
 
---##========== DEPENDENCIES ==========##--
+--» DEPENDENCIES & VARIABLES «--
 
 local function tryRequire(robloxPath: any, relativePath: any): any
 	local ok, result = pcall(function()
@@ -16,7 +18,7 @@ end
 
 local Component = tryRequire(script and script.Parent and script.Parent.Component, "./Component")
 
---##========== TYPES ==========##--
+--» TYPE DEFINITIONS «--
 
 type SystemLog = {
 	name: string,
@@ -55,7 +57,7 @@ export type ArchetypeCensus = {
 	archetypes: { ArchetypeInfo },
 }
 
---##========== PUBLIC API ==========##--
+--» PUBLIC FUNCTIONS «--
 
 local Debugger = {}
 
@@ -64,21 +66,21 @@ Debugger._systemLogs = {} :: { SystemLog }
 Debugger._mutationCounts = {} :: { [string]: number }
 Debugger._systemTimings = {} :: { [string]: SystemTiming }
 
-function Debugger.enable(): ()
+Debugger.enable = function(): ()
 	Debugger._enabled = true
 end
 
-function Debugger.disable(): ()
+Debugger.disable = function(): ()
 	Debugger._enabled = false
 end
 
-function Debugger.isEnabled(): boolean
+Debugger.isEnabled = function(): boolean
 	return Debugger._enabled
 end
 
 -- Records one system run for both the per-frame flush and the cross-frame timing
 -- report. Accumulation only happens in debug mode (the early return guards it).
-function Debugger.logSystemRun(name: string, durationMs: number, entityCount: number): ()
+Debugger.logSystemRun = function(name: string, durationMs: number, entityCount: number): ()
 	if not Debugger._enabled then
 		return
 	end
@@ -103,7 +105,7 @@ function Debugger.logSystemRun(name: string, durationMs: number, entityCount: nu
 	end
 end
 
-function Debugger.logMutation(componentName: string): ()
+Debugger.logMutation = function(componentName: string): ()
 	if not Debugger._enabled then
 		return
 	end
@@ -111,7 +113,7 @@ function Debugger.logMutation(componentName: string): ()
 	Debugger._mutationCounts[componentName] = (Debugger._mutationCounts[componentName] or 0) + 1
 end
 
-function Debugger.flush(frameNumber: number, systemCount: number, disabledCount: number, entityCount: number): ()
+Debugger.flush = function(frameNumber: number, systemCount: number, disabledCount: number, entityCount: number): ()
 	if not Debugger._enabled then
 		return
 	end
@@ -132,7 +134,7 @@ function Debugger.flush(frameNumber: number, systemCount: number, disabledCount:
 	table.clear(Debugger._mutationCounts)
 end
 
---##========== RUNTIME LINTS ==========##--
+--» RUNTIME LINTS «--
 
 -- Debug-mode guards that turn the storage layer's raw-id errors into readable,
 -- name-based ones (the jecs runtime_lints spirit: names, never numeric ids).
@@ -166,13 +168,13 @@ local function _describe(component: any): string
 	return Component.nameOf(id) or `id:{id}`
 end
 
-function Debugger.describeComponent(component: any): string
+Debugger.describeComponent = function(component: any): string
 	return _describe(component)
 end
 
 -- Raises a readable error if an accessed entity is not alive. A stale id means
 -- its slot was recycled or its generation was bumped past the live value.
-function Debugger.lintAlive(world: any, id: number, component: any, operation: string): ()
+Debugger.lintAlive = function(world: any, id: number, component: any, operation: string): ()
 	if world:isAlive(id) then
 		return
 	end
@@ -185,7 +187,7 @@ end
 
 -- Raises if data is written to a tag component, naming the tag (or pair) rather
 -- than the raw numeric id the storage-level assert would show.
-function Debugger.lintTagWrite(component: any, componentId: number, data: any, operation: string): ()
+Debugger.lintTagWrite = function(component: any, componentId: number, data: any, operation: string): ()
 	if data == nil then
 		return
 	end
@@ -199,7 +201,7 @@ end
 
 -- Raises if a query carries zero component terms -- an empty query matches every
 -- entity, almost always an accident. Names the owning system when known.
-function Debugger.lintQuery(query: any, systemName: string?): ()
+Debugger.lintQuery = function(query: any, systemName: string?): ()
 	if #query._all > 0 or #query._any > 0 or #query._none > 0 then
 		return
 	end
@@ -208,7 +210,7 @@ function Debugger.lintQuery(query: any, systemName: string?): ()
 	error(`[VZNCore Lint] query{scope} has zero component terms and would match every entity`, 3)
 end
 
---##========== WORLD INSPECTOR ==========##--
+--» WORLD INSPECTOR «--
 
 -- Shallow one-line rendering of a component data table for dumps.
 local function _formatValue(value: any): string
@@ -228,7 +230,7 @@ end
 -- Full component/tag/pair/sparse picture of one entity, names not ids. Reads the
 -- store's public record surface, so it works anywhere -- Lune tests and the
 -- Studio command bar alike.
-function Debugger.inspectEntity(world: any, id: number): EntityInspection
+Debugger.inspectEntity = function(world: any, id: number): EntityInspection
 	local store = world._entityStore
 
 	local inspection: EntityInspection = {
@@ -273,7 +275,7 @@ function Debugger.inspectEntity(world: any, id: number): EntityInspection
 	return inspection
 end
 
-function Debugger.dumpEntity(world: any, id: number): string
+Debugger.dumpEntity = function(world: any, id: number): string
 	local inspection = Debugger.inspectEntity(world, id)
 
 	if not inspection.alive then
@@ -300,7 +302,7 @@ end
 
 -- Per-archetype entity counts plus a fragmentation ratio (empty non-root
 -- archetypes / total). Signatures are component names, pairs decoded.
-function Debugger.archetypeCensus(world: any): ArchetypeCensus
+Debugger.archetypeCensus = function(world: any): ArchetypeCensus
 	local store = world._entityStore
 
 	local census: ArchetypeCensus = {
@@ -340,7 +342,7 @@ function Debugger.archetypeCensus(world: any): ArchetypeCensus
 	return census
 end
 
-function Debugger.dumpArchetypes(world: any): string
+Debugger.dumpArchetypes = function(world: any): string
 	local census = Debugger.archetypeCensus(world)
 
 	local header = string.format(
@@ -363,7 +365,7 @@ end
 
 -- Accumulated per-system run timings since the last enable/_reset, sorted by
 -- total time descending. Fed by Debugger.logSystemRun every World.step.
-function Debugger.systemTimingReport(): { SystemTiming }
+Debugger.systemTimingReport = function(): { SystemTiming }
 	local report: { SystemTiming } = {}
 
 	for _, timing in Debugger._systemTimings do
@@ -377,7 +379,7 @@ function Debugger.systemTimingReport(): { SystemTiming }
 	return report
 end
 
-function Debugger.dumpSystemTimings(): string
+Debugger.dumpSystemTimings = function(): string
 	local report = Debugger.systemTimingReport()
 
 	if #report == 0 then
@@ -405,7 +407,7 @@ function Debugger.dumpSystemTimings(): string
 	return table.concat(lines, "\n")
 end
 
-function Debugger._reset(): ()
+Debugger._reset = function(): ()
 	Debugger._enabled = false
 
 	table.clear(Debugger._systemLogs)

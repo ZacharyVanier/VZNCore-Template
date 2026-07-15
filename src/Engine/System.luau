@@ -1,7 +1,7 @@
 --[[
 	System -- validates and constructs phased ECS system definitions.
-	Copyright (c) 2026 Zachary Vanier.
-	MIT License.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
 ]]
 
 --» TYPE DEFINITIONS «--

@@ -1,6 +1,10 @@
--- ECS framework type definitions
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	Types -- defines shared ECS type contracts.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
+
+--» TYPE DEFINITIONS «--
 
 export type Entity = number
 

@@ -1,7 +1,7 @@
 --[[
-	VZNCore -- curated public facade for the standalone ECS runtime.
-	Copyright (c) 2026 Zachary Vanier.
-	MIT License.
+	_Facade -- exposes the curated public VZNCore package boundary.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
 ]]
 
 --» DEPENDENCIES & VARIABLES «--

@@ -1,8 +1,10 @@
--- Archetype graph: signature-hashed component storage with cached edge traversal.
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	Archetype -- manages dense component layouts and transition edges.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
 
---##========== DEPENDENCIES ==========##--
+--» DEPENDENCIES & VARIABLES «--
 
 local function tryRequire(robloxPath: any, relativePath: any): any
 	local ok, result = pcall(function()
@@ -16,7 +18,7 @@ end
 
 local Component = tryRequire(script and script.Parent and script.Parent.Component, "./Component")
 
---##========== TYPES ==========##--
+--» TYPE DEFINITIONS «--
 
 type Entity = number
 
@@ -49,7 +51,7 @@ export type Archetype = {
 
 type Store = any
 
---##========== CONSTANTS ==========##--
+--» CONSTANTS «--
 
 -- Shared frozen column for tag components (zero data). A tag sits in an
 -- archetype signature but allocates no per-entity storage: every tag column in
@@ -63,7 +65,7 @@ local NULL_ARRAY: Column = table.freeze({})
 -- metatable namecall on every swap-remove.
 local ENTITY_MASK = 2 ^ 24
 
---##========== PRIVATE FUNCTIONS ==========##--
+--» PRIVATE FUNCTIONS «--
 
 -- \0 join over the numeric signature. A bare number-join could collide across
 -- distinct signatures ({1,23} vs {12,3}); "\0" separates them. Luau prints these
@@ -114,11 +116,11 @@ local function _unregisterDestroyed(store: Store, archetype: Archetype): ()
 	end
 end
 
---##========== PUBLIC API ==========##--
+--» PUBLIC FUNCTIONS «--
 
 local Archetype = {}
 
-function Archetype.createRoot(store: Store): Archetype
+Archetype.createRoot = function(store: Store): Archetype
 	store._maxArchetypeId += 1
 
 	local archetype: Archetype = {
@@ -211,7 +213,7 @@ local function _create(store: Store, types: { number }, hashKey: string): Archet
 	return archetype
 end
 
-function Archetype.ensure(store: Store, types: { number }): Archetype
+Archetype.ensure = function(store: Store, types: { number }): Archetype
 	if #types < 1 then
 		return store._root
 	end
@@ -247,7 +249,7 @@ local function _findArchetypeWithout(store: Store, from: Archetype, id: number):
 	return Archetype.ensure(store, destinationTypes)
 end
 
-function Archetype.traverseAdd(store: Store, from: Archetype, id: number): Archetype
+Archetype.traverseAdd = function(store: Store, from: Archetype, id: number): Archetype
 	if from.columnsMap[id] then
 		return from
 	end
@@ -264,7 +266,7 @@ function Archetype.traverseAdd(store: Store, from: Archetype, id: number): Arche
 	return destination
 end
 
-function Archetype.traverseRemove(store: Store, from: Archetype, id: number): Archetype
+Archetype.traverseRemove = function(store: Store, from: Archetype, id: number): Archetype
 	local edge = store._archetypeEdges[from.id]
 
 	local destination = edge[id]
@@ -277,7 +279,7 @@ function Archetype.traverseRemove(store: Store, from: Archetype, id: number): Ar
 	return destination
 end
 
-function Archetype.appendEntity(archetype: Archetype, entity: Entity): number
+Archetype.appendEntity = function(archetype: Archetype, entity: Entity): number
 	local entities = archetype.entities
 	local row = #entities + 1
 	entities[row] = entity
@@ -326,7 +328,7 @@ local function _buildMovePlan(from: Archetype, destination: Archetype): MovePlan
 	}
 end
 
-function Archetype.moveEntity(store: Store, entity: Entity, record: any, destination: Archetype): ()
+Archetype.moveEntity = function(store: Store, entity: Entity, record: any, destination: Archetype): ()
 	local from = record.archetype
 	local sourceRow = record.row
 
@@ -387,7 +389,7 @@ function Archetype.moveEntity(store: Store, entity: Entity, record: any, destina
 	record.row = destinationRow
 end
 
-function Archetype.removeRow(store: Store, archetype: Archetype, row: number): ()
+Archetype.removeRow = function(store: Store, archetype: Archetype, row: number): ()
 	local entities = archetype.entities
 	local columns = archetype.columns
 	local lastRow = #entities
@@ -423,11 +425,11 @@ function Archetype.removeRow(store: Store, archetype: Archetype, row: number): (
 	entities[lastRow] = nil
 end
 
-function Archetype.match(archetype: Archetype, query: any): boolean
+Archetype.match = function(archetype: Archetype, query: any): boolean
 	return _matches(archetype, query)
 end
 
-function Archetype.destroyEmpty(store: Store): number
+Archetype.destroyEmpty = function(store: Store): number
 	local empties: { Archetype } = {}
 
 	for _, archetype in store._archetypes do

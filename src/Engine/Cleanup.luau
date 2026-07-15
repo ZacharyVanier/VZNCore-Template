@@ -1,8 +1,10 @@
--- ECS instance binding + despawn cleanup, and relationship cleanup traits.
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	Cleanup -- owns relationship deletion traits and Instance cleanup.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
 
---##========== DEPENDENCIES ==========##--
+--» DEPENDENCIES & VARIABLES «--
 
 local function tryRequire(robloxPath: any, relativePath: any): any
 	local ok, result = pcall(function()
@@ -16,7 +18,7 @@ end
 
 local Component = tryRequire(script and script.Parent and script.Parent.Component, "./Component")
 
---##========== TYPES ==========##--
+--» TYPE DEFINITIONS «--
 
 type BindingMap = {
 	[number]: { any },
@@ -30,7 +32,7 @@ export type RelationTrait = {
 	onDeleteTarget: CleanupAction,
 }
 
---##========== CONSTANTS ==========##--
+--» CONSTANTS «--
 
 -- Defaults follow jecs: deleting a relation or a target Removes the affected
 -- pairs (holders keep living). ChildOf overrides onDeleteTarget to Delete, so
@@ -38,14 +40,14 @@ export type RelationTrait = {
 local DEFAULT_ON_DELETE: CleanupAction = "remove"
 local DEFAULT_ON_DELETE_TARGET: CleanupAction = "remove"
 
---##========== MODULE-LEVEL STATE ==========##--
+--» MODULE-LEVEL STATE «--
 
 -- Relation traits are global config keyed by relation id, like component
 -- definitions -- not per-world. Seeded with the ChildOf hierarchy defaults.
 local _relationTraits: { [number]: RelationTrait } = {}
 local _relationTraitRevision: number = 0
 
---##========== PRIVATE FUNCTIONS ==========##--
+--» PRIVATE FUNCTIONS «--
 
 local function _seedRelationTraits(): ()
 	_relationTraits[Component.ChildOf] = {
@@ -55,12 +57,12 @@ local function _seedRelationTraits(): ()
 	}
 end
 
---##========== RELATION TRAITS ==========##--
+--» RELATION TRAITS «--
 
 local Cleanup = {}
 Cleanup.__index = Cleanup
 
-function Cleanup.setRelationTrait(
+Cleanup.setRelationTrait = function(
 	relationId: number,
 	traits: { exclusive: boolean?, onDelete: CleanupAction?, onDeleteTarget: CleanupAction? }
 ): ()
@@ -74,36 +76,36 @@ function Cleanup.setRelationTrait(
 	_relationTraitRevision += 1
 end
 
-function Cleanup.relationTraitRevision(): number
+Cleanup.relationTraitRevision = function(): number
 	return _relationTraitRevision
 end
 
-function Cleanup.getRelationTrait(relationId: number): RelationTrait?
+Cleanup.getRelationTrait = function(relationId: number): RelationTrait?
 	return _relationTraits[relationId]
 end
 
-function Cleanup.isExclusive(relationId: number): boolean
+Cleanup.isExclusive = function(relationId: number): boolean
 	local trait = _relationTraits[relationId]
 	return trait ~= nil and trait.exclusive == true
 end
 
-function Cleanup.onDelete(relationId: number): CleanupAction
+Cleanup.onDelete = function(relationId: number): CleanupAction
 	local trait = _relationTraits[relationId]
 	return (trait and trait.onDelete) or DEFAULT_ON_DELETE
 end
 
-function Cleanup.onDeleteTarget(relationId: number): CleanupAction
+Cleanup.onDeleteTarget = function(relationId: number): CleanupAction
 	local trait = _relationTraits[relationId]
 	return (trait and trait.onDeleteTarget) or DEFAULT_ON_DELETE_TARGET
 end
 
-function Cleanup._resetTraits(): ()
+Cleanup._resetTraits = function(): ()
 	table.clear(_relationTraits)
 	_seedRelationTraits()
 	_relationTraitRevision += 1
 end
 
---##========== INSTANCE BINDING ==========##--
+--» INSTANCE BINDING «--
 
 export type Cleanup = typeof(setmetatable(
 	{} :: {
@@ -112,7 +114,7 @@ export type Cleanup = typeof(setmetatable(
 	Cleanup
 ))
 
-function Cleanup.new(): Cleanup
+Cleanup.new = function(): Cleanup
 	local self = setmetatable({}, Cleanup) :: Cleanup
 
 	self._bindings = {}
@@ -120,7 +122,7 @@ function Cleanup.new(): Cleanup
 	return self
 end
 
-function Cleanup.bind(self: Cleanup, entityId: number, instance: any): ()
+Cleanup.bind = function(self: Cleanup, entityId: number, instance: any): ()
 	if not self._bindings[entityId] then
 		self._bindings[entityId] = {}
 	end
@@ -128,7 +130,7 @@ function Cleanup.bind(self: Cleanup, entityId: number, instance: any): ()
 	table.insert(self._bindings[entityId], instance)
 end
 
-function Cleanup.unbindAll(self: Cleanup, entityId: number): ()
+Cleanup.unbindAll = function(self: Cleanup, entityId: number): ()
 	local bound = self._bindings[entityId]
 	if not bound then
 		return
@@ -144,7 +146,7 @@ function Cleanup.unbindAll(self: Cleanup, entityId: number): ()
 	self._bindings[entityId] = nil
 end
 
-function Cleanup.clear(self: Cleanup): ()
+Cleanup.clear = function(self: Cleanup): ()
 	table.clear(self._bindings)
 end
 

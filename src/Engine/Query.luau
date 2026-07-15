@@ -1,8 +1,10 @@
--- Chainable query builder with all/any/none filters and optional archetype caching
--- VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
--- GitHub-managed: do not modify in Roblox Studio.
+--[[
+	Query -- builds immutable component filters and projections.
+	VZNCore | Copyright (c) 2026 Zachary Vanier | MIT License.
+	GitHub-managed: do not modify in Roblox Studio.
+]]
 
---##========== DEPENDENCIES ==========##--
+--» DEPENDENCIES & VARIABLES «--
 
 local function tryRequire(robloxPath: any, relativePath: any): any
 	local ok, result = pcall(function()
@@ -17,16 +19,16 @@ end
 local ECSTypes = tryRequire(script and script.Parent and script.Parent.Types, "./Types")
 local Component = tryRequire(script and script.Parent and script.Parent.Component, "./Component")
 
---##========== TYPES ==========##--
+--» TYPE DEFINITIONS «--
 
 type ComponentRef = ECSTypes.ComponentRef<any>
 
---##========== PUBLIC API ==========##--
+--» PUBLIC FUNCTIONS «--
 
 local Query = {}
 Query.__index = Query
 
---##========== PRIVATE FUNCTIONS ==========##--
+--» PRIVATE FUNCTIONS «--
 
 -- A ref is a component name (string), a typed handle (table with .id), or an
 -- already-packed id (number, e.g. a pair). All collapse to the numeric id the
@@ -94,7 +96,7 @@ local function _createEmpty(): QueryImpl
 	return self
 end
 
-function Query.all(self: any, ...: ComponentRef): QueryImpl
+Query.all = function(self: any, ...: ComponentRef): QueryImpl
 	if _isQuery(self) then
 		local cloned = _clone(self)
 		_appendAll(cloned._all, ...)
@@ -112,7 +114,7 @@ function Query.all(self: any, ...: ComponentRef): QueryImpl
 	return created
 end
 
-function Query.any(self: any, ...: ComponentRef): QueryImpl
+Query.any = function(self: any, ...: ComponentRef): QueryImpl
 	if _isQuery(self) then
 		local cloned = _clone(self)
 		_appendAll(cloned._any, ...)
@@ -130,7 +132,7 @@ function Query.any(self: any, ...: ComponentRef): QueryImpl
 	return created
 end
 
-function Query.none(self: any, ...: ComponentRef): QueryImpl
+Query.none = function(self: any, ...: ComponentRef): QueryImpl
 	if _isQuery(self) then
 		local cloned = _clone(self)
 		_appendAll(cloned._none, ...)
@@ -148,7 +150,7 @@ function Query.none(self: any, ...: ComponentRef): QueryImpl
 	return created
 end
 
-function Query.select(self: any, ...: ComponentRef): QueryImpl
+Query.select = function(self: any, ...: ComponentRef): QueryImpl
 	if _isQuery(self) then
 		local cloned = _clone(self)
 		_appendAll(cloned._select, ...)
@@ -166,7 +168,7 @@ function Query.select(self: any, ...: ComponentRef): QueryImpl
 	return created
 end
 
-function Query.cached(self: QueryImpl): QueryImpl
+Query.cached = function(self: QueryImpl): QueryImpl
 	local q = _clone(self)
 
 	q._cached = true
@@ -174,7 +176,7 @@ function Query.cached(self: QueryImpl): QueryImpl
 	return q
 end
 
-function Query.matches(self: QueryImpl, componentSet: { [number]: any }): boolean
+Query.matches = function(self: QueryImpl, componentSet: { [number]: any }): boolean
 	for _, id in self._all do
 		if componentSet[id] == nil then
 			return false
